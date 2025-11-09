@@ -6,10 +6,11 @@
 
 按[SPACE]运行，按[R]重置
 
-==================================================
+=
 运行 main.py
+=
 Run main.py
-===================================================
+=
 
 A 2D projectile motion simulation animation created using Pygame.
 
