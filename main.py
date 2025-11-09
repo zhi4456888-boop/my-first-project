@@ -40,6 +40,7 @@ running = False
 fired = False
 show_force = False
 show_velocity = False
+dragging_angle = False
 
 start_time = 0.0
 trail_surface = pygame.Surface((1200, 900), pygame.SRCALPHA)
@@ -62,14 +63,22 @@ max_speed = 30
 # 高度滑块位置与范围
 h_slider_x = 350
 h_slider_y = 60
-min_height = 0.5
-max_height = 5.0
+min_height = -2.5
+max_height = 4.0
 
 # 时间滑块位置与范围
 ts_slider_x = 350
 ts_slider_y = 100
 min_timeSpeed = 0.1
 max_timeSpeed = 2
+
+# 角度滑块位置与范围
+angle_slider_x = 350
+angle_slider_y = 140
+min_angle = 0
+max_angle = 90
+angle_deg = 45.0  # 初始角度（单位：度）
+
 
 
 # 状态
@@ -135,6 +144,12 @@ while True:
                 fired = True
                 start_time = pygame.time.get_ticks() / 1000.0
                 trail_points.clear()
+                angle_rad = math.radians(angle_deg) if 'angle_deg' in globals() else math.radians(
+                    45.0)  # 如果你用了角度滑块则用 angle_deg
+                v0 = v_x  # v_x 是滑块上的初速度大小（m/s）
+                v_x_comp = v0 * math.cos(angle_rad)  # 水平分量（向右为正）
+                v_y_comp = v0 * math.sin(angle_rad)  # 竖直初速度（向上为正）
+
 
 
 
@@ -155,12 +170,15 @@ while True:
                 v_handle_x = v_slider_x + (v_x - min_speed) / (max_speed - min_speed) * slider_w
                 h_handle_x = h_slider_x + (h0_m - min_height) / (max_height - min_height) * slider_w
                 ts_handle_x = ts_slider_x + (t_s - min_timeSpeed) / (max_timeSpeed - min_timeSpeed) * slider_w
+                angle_handle_x = angle_slider_x + (angle_deg - min_angle) / (max_angle - min_angle) * slider_w
                 if abs(mx - v_handle_x) < 15 and abs(my - (v_slider_y + slider_h // 2)) < 15:
                     dragging_v = True
                 elif abs(mx - h_handle_x) < 15 and abs(my - (h_slider_y + slider_h // 2)) < 15:
                     dragging_h = True
                 elif abs(mx - ts_handle_x) < 15 and abs(my - (ts_slider_y + slider_h // 2)) < 15:
                     dragging_ts = True
+                elif abs(mx - angle_handle_x) < 15 and abs(my - (angle_slider_y + slider_h // 2)) < 15:
+                    dragging_angle = True
 
 
         elif event.type == pygame.MOUSEBUTTONUP:
@@ -168,6 +186,7 @@ while True:
                 dragging_v = False
                 dragging_h = False
                 dragging_ts = False
+                dragging_angle = False
 
 
         elif event.type == pygame.MOUSEMOTION:
@@ -184,6 +203,10 @@ while True:
                 mx = max(ts_slider_x, min(ts_slider_x + slider_w, mx))
                 ratio = (mx - ts_slider_x) / slider_w
                 t_s = min_timeSpeed + ratio * (max_timeSpeed - min_timeSpeed)
+            elif dragging_angle and not running:
+                mx = max(angle_slider_x, min(angle_slider_x + slider_w, mx))
+                ratio = (mx - angle_slider_x) / slider_w
+                angle_deg = min_angle + ratio * (max_angle - min_angle)
 
 
 
@@ -208,11 +231,18 @@ while True:
         #更新小球状态
         now = pygame.time.get_ticks() / 1000.0
         t = (now - start_time) * t_s
-        x_m = v_x * t
-        h_m = h0_m - 0.5 * g * t * t
-        v_y += g * dt  *t_s
+        if t < 0:
+            t = 0.0
 
+        # 瞬时速度
+        vx_inst = v_x_comp  # 水平恒定（向右为正）
+        vy_inst = v_y_comp - g * t  # 竖直瞬时速度（向上为正）
 
+        # 位置
+        x_m = v_x_comp * t
+        h_m = h0_m + v_y_comp * t - 0.5 * g * t * t
+
+        # 到底部检测
         if h_m <= -4:
             h_m = -4
             running = False
@@ -253,33 +283,30 @@ while True:
     #绘制速度矢量
     if show_velocity and (running or fired):
         start = ball_rect.center
-        arrow_scale = 0.06  # 调整箭头长度比例
 
-        # 绘制合速度（红色）
-        v_total_x = v_x * SCALE
-        v_total_y = v_y * SCALE
-        end_total = (start[0] + v_total_x * arrow_scale,
-                     start[1] + v_total_y * arrow_scale)
+        vx_px = vx_inst * SCALE
+        vy_px = -vy_inst * SCALE
+
+        arrow_scale = 0.06  # 调节视觉长度
+
+        # 合速度（红）
+        end_total = (start[0] + vx_px * arrow_scale, start[1] + vy_px * arrow_scale)
         draw_arrow(screen, start, end_total, color=(255, 0, 0), width=3)
-        label_total = font.render("v", True, (255, 0, 0))
-        screen.blit(label_total, (end_total[0] + 5, end_total[1] - 10))
+        screen.blit(font.render("v", True, (255, 0, 0)), (end_total[0] + 5, end_total[1] - 10))
 
-        # 绘制水平分速度（绿色）
-        end_vx = (start[0] + v_total_x * arrow_scale, start[1])
+        # 水平分速度 vx（绿）
+        end_vx = (start[0] + vx_px * arrow_scale, start[1])
         draw_arrow(screen, start, end_vx, color=(0, 150, 0), width=2)
-        label_vx = font.render("vx", True, (0, 150, 0))
-        screen.blit(label_vx, (end_vx[0] + 5, end_vx[1] - 10))
+        screen.blit(font.render("vx", True, (0, 150, 0)), (end_vx[0] + 5, end_vx[1] - 10))
 
-        # 绘制竖直分速度（蓝色）
-        end_vy = (start[0], start[1] + v_total_y * arrow_scale)
+        # 竖直分速度 vy（蓝）
+        end_vy = (start[0], start[1] + vy_px * arrow_scale)
         draw_arrow(screen, start, end_vy, color=(0, 0, 255), width=2)
-        label_vy = font.render("vy", True, (0, 0, 255))
-        screen.blit(label_vy, (end_vy[0] + 5, end_vy[1] + 5))
+        screen.blit(font.render("vy", True, (0, 0, 255)), (end_vy[0] + 5, end_vy[1] + 5))
 
-        # 辅助线：连接 vx 和 vy 的终点
+        # 辅助线
         pygame.draw.line(screen, (180, 180, 180), end_vx, end_total, 1)
         pygame.draw.line(screen, (180, 180, 180), end_vy, end_total, 1)
-
 
 
     # 绘制UI
@@ -312,7 +339,6 @@ while True:
     draw_slider(screen, v_slider_x, v_slider_y, v_x, min_speed, max_speed, "速度(m/s)", (255, 100, 100))
     draw_slider(screen, h_slider_x, h_slider_y, h0_m, min_height, max_height, "高度(m)", (100, 150, 255))
     draw_slider(screen,ts_slider_x,ts_slider_y,t_s,min_timeSpeed,max_timeSpeed,"时间流速",(100,255,100))
-
-
+    draw_slider(screen, angle_slider_x, angle_slider_y, angle_deg, min_angle, max_angle, "角度(°)", (255, 200, 0))
 
     pygame.display.flip()
